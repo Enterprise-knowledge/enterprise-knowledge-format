@@ -1,0 +1,4 @@
+interface:
+  display_name: "EKF Bootstrap"
+  short_description: "Bootstrap EKF knowledge bases"
+  default_prompt: "Use $ekf-bootstrap to create a starter EKF knowledge base for a company domain."
