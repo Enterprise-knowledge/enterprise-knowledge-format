@@ -18,6 +18,12 @@ When maintaining this repository, preserve these priorities:
 8. **Keep bootstrap tooling aligned** - When `SPEC.md` changes, review and update `skills/ekf-bootstrap/` so new EKF bundles start from the current standard.
 9. **Strict writers, forgiving readers** - Keep authoring expectations clear, but require consumers to tolerate partial, unknown, or draft content.
 
+## Source Ingestion Guidance
+
+When indexing source material that is not already markdown, install and use `markitdown` to create a markdown rendering before drafting EKF concepts. Prefer adding `markitdown` to a local `pyproject.toml` with `uv init --bare` and `uv add markitdown` when `uv` is available. If `uv` is unavailable, create a local virtual environment and install `markitdown` there.
+
+Keep the original file under `source/`. Write generated markdown renderings under `artifacts/markdown/` or an equivalent bundle-local artifact path, not under `knowledge/`. Curated concepts still belong in `knowledge/` and should cite the original source file in `sources`; they may also reference the markdown rendering in `artifacts` when useful. Do not let generated conversions override canonical concepts or bypass redaction, secret scanning, provenance, or review.
+
 ## Style for SPEC.md Changes
 
 - Use normative words deliberately: `must`, `should`, and `may`.

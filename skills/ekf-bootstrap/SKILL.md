@@ -113,11 +113,54 @@ After the user adds source material, preserve the source/knowledge/artifact spli
 
 1. Inventory source areas under `source/` and nested `bundles/*/source/`.
 2. Add or update `ekf-source.yml` manifests for source areas intended for indexing.
-3. Draft concepts only under `knowledge/` trees.
-4. Put source provenance in `sources` frontmatter and claim-level citations in markdown.
-5. Put typed graph edges in `related` frontmatter with short relation descriptions.
-6. Keep generated HTML, diagrams, graph exports, and indexes under `artifacts/`.
-7. Leave uncertain extracted knowledge as `status: draft` with honest `confidence` or review metadata when known.
+3. For source files that are not already markdown, install and use `markitdown` to create markdown renderings before drafting concepts.
+4. Store generated markdown renderings under `artifacts/markdown/` or an equivalent bundle-local artifact path, not under `knowledge/`.
+5. Draft concepts only under `knowledge/` trees.
+6. Put source provenance in `sources` frontmatter and claim-level citations in markdown.
+7. Put typed graph edges in `related` frontmatter with short relation descriptions.
+8. Keep generated markdown, HTML, diagrams, graph exports, and indexes under `artifacts/`.
+9. Leave uncertain extracted knowledge as `status: draft` with honest `confidence` or review metadata when known.
+
+## Source Conversion with MarkItDown
+
+Use `markitdown` for non-markdown source formats that need text extraction before concept drafting. Keep the original source file unchanged under `source/`; the generated markdown rendering is an artifact and support material, not canonical EKF knowledge.
+
+For durable local tooling when `uv` is available:
+
+```sh
+uv init --bare
+uv add markitdown
+uv run python - <<'PY'
+from pathlib import Path
+from markitdown import MarkItDown
+
+source = Path("source/documents/example.pdf")
+target = Path("artifacts/markdown/documents/example.md")
+target.parent.mkdir(parents=True, exist_ok=True)
+result = MarkItDown().convert(str(source))
+target.write_text(result.text_content, encoding="utf-8")
+PY
+```
+
+For one-off conversion when a persistent project environment is unnecessary, `uv run --with markitdown python` may be used instead. When `uv` is unavailable, create a local virtual environment and install `markitdown` inside it:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install markitdown
+python - <<'PY'
+from pathlib import Path
+from markitdown import MarkItDown
+
+source = Path("source/documents/example.pdf")
+target = Path("artifacts/markdown/documents/example.md")
+target.parent.mkdir(parents=True, exist_ok=True)
+result = MarkItDown().convert(str(source))
+target.write_text(result.text_content, encoding="utf-8")
+PY
+```
+
+After conversion, cite the original source path in concept `sources` frontmatter. Add the markdown rendering to concept `artifacts` only when it helps readers or agents inspect the extracted text. Review generated markdown before using it for claims, especially for tables, diagrams, scanned pages, or files that may contain secrets.
 
 ## Placement Rules
 
