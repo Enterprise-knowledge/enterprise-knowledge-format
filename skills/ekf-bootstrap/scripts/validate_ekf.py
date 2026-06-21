@@ -187,10 +187,18 @@ def validate_concept(path: Path, frontmatter: dict[str, Any] | None, had_frontma
 
 
 def bundle_roots(root: Path) -> list[tuple[Path, bool]]:
-    roots = [(root, True)]
-    nested_root = root / "bundles"
-    if nested_root.is_dir():
-        roots.extend((child, False) for child in sorted(nested_root.iterdir()) if child.is_dir())
+    roots: list[tuple[Path, bool]] = []
+
+    def walk(bundle_root: Path, is_root: bool) -> None:
+        roots.append((bundle_root, is_root))
+        nested_root = bundle_root / "bundles"
+        if not nested_root.is_dir() or nested_root.is_symlink():
+            return
+        for child in sorted(nested_root.iterdir(), key=lambda path: path.name):
+            if child.is_dir() and not child.is_symlink():
+                walk(child, False)
+
+    walk(root, True)
     return roots
 
 

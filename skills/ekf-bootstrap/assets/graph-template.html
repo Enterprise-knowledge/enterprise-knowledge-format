@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EKF Knowledge Graph</title>
+  <style>
+    :root {
+      --bg: #101113;
+      --panel: rgba(246, 244, 237, 0.94);
+      --panel-strong: #fffdf7;
+      --ink: #151719;
+      --muted: #687077;
+      --accent: #16a085;
+      --danger: #d9534f;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 12%, rgba(22, 160, 133, 0.18), transparent 32%),
+        radial-gradient(circle at 85% 80%, rgba(224, 168, 46, 0.16), transparent 30%),
+        linear-gradient(135deg, #101113 0%, #191512 54%, #111516 100%);
+      color: var(--ink);
+    }
+
+    button,
+    input { font: inherit; }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      display: block;
+      padding: 0;
+    }
+
+    .panel {
+      z-index: 3;
+      max-height: calc(100vh - 28px);
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid rgba(21, 23, 25, 0.08);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      border-radius: 8px;
+    }
+
+    .left {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      width: min(320px, calc(100vw - 28px));
+      padding: 18px;
+    }
+
+    .right {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      bottom: 14px;
+      width: min(380px, calc(100vw - 28px));
+      padding: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      line-height: 1.1;
+      font-weight: 760;
+    }
+
+    h2 {
+      margin: 20px 0 10px;
+      font-size: 13px;
+      line-height: 1.2;
+      color: #34393d;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .stat,
+    .meta,
+    .edge-card {
+      border: 1px solid rgba(21, 23, 25, 0.08);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.54);
+    }
+
+    .stat { padding: 10px; }
+
+    .stat strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .search {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid rgba(21, 23, 25, 0.18);
+      border-radius: 7px;
+      background: var(--panel-strong);
+      color: var(--ink);
+      outline: none;
+      font-size: 13px;
+    }
+
+    .search:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(22, 160, 133, 0.18);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .button-row button {
+      height: 34px;
+      flex: 1;
+      border: 1px solid rgba(21, 23, 25, 0.14);
+      border-radius: 7px;
+      background: #f9f6ed;
+      color: #24272a;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+    }
+
+    .legend-item {
+      display: grid;
+      grid-template-columns: 14px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 24px;
+      color: #31363a;
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.75);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+    }
+
+    .bundle-path {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .graph-wrap {
+      position: fixed;
+      inset: 0;
+      min-width: 0;
+      overflow: hidden;
+      border: 0;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 38px 38px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    }
+
+    #graph {
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+      display: block;
+      cursor: grab;
+      user-select: none;
+    }
+
+    #graph.panning { cursor: grabbing; }
+
+    .hint {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      z-index: 2;
+      padding: 8px 10px;
+      border-radius: 7px;
+      color: rgba(255, 255, 255, 0.72);
+      background: rgba(8, 10, 11, 0.48);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .link {
+      stroke: rgba(255, 255, 255, 0.34);
+      stroke-width: 1.4;
+      fill: none;
+    }
+
+    .link.missing {
+      stroke: var(--danger);
+      stroke-dasharray: 7 5;
+    }
+
+    .link.active {
+      stroke: #f7d36d;
+      stroke-width: 2.6;
+    }
+
+    .link-label {
+      fill: rgba(255, 255, 255, 0.76);
+      font-size: 9px;
+      paint-order: stroke;
+      stroke: rgba(16, 17, 19, 0.76);
+      stroke-width: 3px;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .link-label.active { opacity: 1; }
+
+    .node circle {
+      stroke: rgba(255, 255, 255, 0.84);
+      stroke-width: 2px;
+      filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.32));
+    }
+
+    .node text {
+      fill: rgba(255, 255, 255, 0.9);
+      font-size: 10px;
+      font-weight: 720;
+      paint-order: stroke;
+      stroke: rgba(16, 17, 19, 0.76);
+      stroke-width: 4px;
+      pointer-events: none;
+    }
+
+    .node.dim { opacity: 0.28; }
+
+    .node.active circle {
+      stroke: #fff7c4;
+      stroke-width: 4px;
+    }
+
+    .node.missing circle {
+      fill: transparent;
+      stroke: var(--danger);
+      stroke-dasharray: 5 4;
+    }
+
+    .detail-empty {
+      min-height: 220px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border: 1px dashed rgba(21, 23, 25, 0.18);
+      border-radius: 8px;
+      padding: 24px;
+      background: rgba(255, 255, 255, 0.38);
+    }
+
+    .detail-title {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.12;
+      font-weight: 780;
+    }
+
+    .meta-grid,
+    .edge-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .meta-grid { margin: 16px 0; }
+
+    .meta,
+    .edge-card { padding: 10px; }
+
+    .meta span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .meta code {
+      white-space: normal;
+      word-break: break-word;
+      color: #202326;
+      font-size: 12px;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .tag {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(22, 160, 133, 0.12);
+      color: #106f60;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .edge-card { cursor: pointer; }
+
+    .edge-card strong {
+      display: block;
+      font-size: 12px;
+    }
+
+    .edge-card span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    @media (max-width: 920px) {
+      html,
+      body { overflow: auto; }
+
+      #app {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(420px, 1fr) auto;
+        gap: 14px;
+        padding: 14px;
+        overflow: auto;
+      }
+
+      .panel {
+        position: relative;
+        inset: auto;
+        width: auto;
+        max-height: none;
+      }
+
+      .graph-wrap {
+        position: relative;
+        min-height: 520px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      #graph { min-height: 520px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <aside class="panel left" aria-label="Graph controls">
+      <h1>EKF Knowledge Graph</h1>
+      <p>Recursive bundle view for this EKF knowledge base.</p>
+      <div class="stats">
+        <div class="stat"><strong id="nodeCount">0</strong><span>concepts</span></div>
+        <div class="stat"><strong id="edgeCount">0</strong><span>relations</span></div>
+        <div class="stat"><strong id="bundleCount">0</strong><span>bundles</span></div>
+      </div>
+      <input id="search" class="search" type="search" placeholder="Search concepts, types, tags">
+      <div class="button-row">
+        <button id="fitButton" type="button">Fit</button>
+        <button id="clearButton" type="button">Clear</button>
+      </div>
+      <h2>Bundles</h2>
+      <div id="legend" class="legend"></div>
+    </aside>
+
+    <section class="graph-wrap" aria-label="Interactive knowledge graph">
+      <svg id="graph" role="img" aria-label="Force-directed EKF graph"></svg>
+      <div class="hint">Wheel to zoom. Drag the canvas to pan. Drag nodes to rearrange.</div>
+    </section>
+
+    <aside class="panel right" aria-label="Selected concept details">
+      <div id="details" class="detail-empty">
+        <p>Select a concept or relation to inspect metadata and graph context.</p>
+      </div>
+    </aside>
+  </main>
+
+  <script id="graph-data" type="application/json">__EKF_GRAPH_JSON__</script>
+  <script>
+    const graph = JSON.parse(document.getElementById("graph-data").textContent);
+    const svg = document.getElementById("graph");
+    const details = document.getElementById("details");
+    const search = document.getElementById("search");
+    const fitButton = document.getElementById("fitButton");
+    const clearButton = document.getElementById("clearButton");
+    const palette = ["#16a085", "#d96c52", "#4f7cac", "#b06ab3", "#e0a82e", "#6ab47b"];
+    const bundleColor = new Map(graph.bundles.map((bundle, index) => [bundle.id, palette[index % palette.length]]));
+    const degreeById = new Map();
+    graph.nodes.forEach(node => degreeById.set(node.id, 0));
+    graph.edges.forEach(edge => {
+      degreeById.set(edge.source, (degreeById.get(edge.source) || 0) + 1);
+      degreeById.set(edge.target, (degreeById.get(edge.target) || 0) + 1);
+    });
+    const degreeValues = [...degreeById.values()];
+    const minDegree = degreeValues.length ? Math.min(...degreeValues) : 0;
+    const maxDegree = degreeValues.length ? Math.max(...degreeValues) : 0;
+
+    function radiusForDegree(degree, depth) {
+      if (maxDegree === minDegree) return 13;
+      const t = (degree - minDegree) / (maxDegree - minDegree);
+      return 9 + t * 15 + Math.max(0, 2 - depth) * 0.6;
+    }
+
+    const nodes = graph.nodes.map((node, index) => {
+      const degree = degreeById.get(node.id) || 0;
+      return {
+        ...node,
+        degree,
+        x: Math.cos((index / Math.max(1, graph.nodes.length)) * Math.PI * 2) * 300,
+        y: Math.sin((index / Math.max(1, graph.nodes.length)) * Math.PI * 2) * 220,
+        vx: 0,
+        vy: 0,
+        radius: radiusForDegree(degree, node.bundle_depth || 0)
+      };
+    });
+
+    const nodeById = new Map(nodes.map(node => [node.id, node]));
+    const missingNodes = [];
+    graph.edges.forEach(edge => {
+      if (!nodeById.has(edge.target)) {
+        const node = {
+          id: edge.target || "unresolved-target",
+          path: edge.target || "unresolved-target",
+          title: edge.name || "Missing target",
+          type: "missing",
+          description: "This relation target was not found in the parsed graph.",
+          status: "missing",
+          owner: null,
+          tags: [],
+          bundle_id: "missing",
+          bundle_path: "",
+          bundle_depth: 0,
+          bundle_ancestry: [],
+          degree: 1,
+          x: 240,
+          y: 120,
+          vx: 0,
+          vy: 0,
+          radius: 10,
+          missing: true
+        };
+        nodeById.set(node.id, node);
+        missingNodes.push(node);
+      }
+    });
+    nodes.push(...missingNodes);
+    const edges = graph.edges.map(edge => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }));
+    let selectedNode = null;
+    let selectedEdge = null;
+    let filterText = "";
+    let transform = { x: 0, y: 0, k: 1 };
+    let draggingNode = null;
+    let panning = null;
+    let width = 0;
+    let height = 0;
+
+    document.getElementById("nodeCount").textContent = graph.nodes.length;
+    document.getElementById("edgeCount").textContent = graph.edges.length;
+    document.getElementById("bundleCount").textContent = graph.bundles.length;
+
+    const legend = document.getElementById("legend");
+    legend.innerHTML = graph.bundles.map(bundle => `
+      <div class="legend-item">
+        <span class="dot" style="background:${bundleColor.get(bundle.id)}"></span>
+        <span>${escapeHtml(bundle.title)}</span>
+        <span class="bundle-path">depth ${bundle.depth}</span>
+      </div>
+    `).join("");
+
+    const defs = createSvg("defs");
+    const marker = createSvg("marker", { id: "arrow", markerWidth: 10, markerHeight: 10, refX: 9, refY: 3, orient: "auto", markerUnits: "strokeWidth" });
+    marker.appendChild(createSvg("path", { d: "M0,0 L0,6 L9,3 z", fill: "rgba(255,255,255,0.55)" }));
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+    const viewport = createSvg("g");
+    const edgeLayer = createSvg("g");
+    const edgeLabelLayer = createSvg("g");
+    const nodeLayer = createSvg("g");
+    viewport.append(edgeLayer, edgeLabelLayer, nodeLayer);
+    svg.appendChild(viewport);
+
+    function createSvg(tag, attrs = {}) {
+      const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
+      return element;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char]));
+    }
+
+    function ownerName(owner) {
+      if (!owner) return "Unassigned";
+      if (typeof owner === "string") return owner;
+      return owner.name || JSON.stringify(owner);
+    }
+
+    function matchesFilter(node) {
+      if (!filterText) return true;
+      const haystack = [node.title, node.type, node.description, node.bundle_id, node.path, ...(node.tags || [])].join(" ").toLowerCase();
+      return haystack.includes(filterText);
+    }
+
+    function resize() {
+      const rect = svg.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      if (!transform.x && !transform.y) fitGraph();
+    }
+
+    function fitGraph() {
+      if (!nodes.length) return;
+      const minX = Math.min(...nodes.map(node => node.x));
+      const maxX = Math.max(...nodes.map(node => node.x));
+      const minY = Math.min(...nodes.map(node => node.y));
+      const maxY = Math.max(...nodes.map(node => node.y));
+      const graphWidth = Math.max(1, maxX - minX);
+      const graphHeight = Math.max(1, maxY - minY);
+      const leftPanel = document.querySelector(".left").getBoundingClientRect();
+      const rightPanel = document.querySelector(".right").getBoundingClientRect();
+      const safeLeft = window.innerWidth > 920 ? leftPanel.right + 42 : 40;
+      const safeRight = window.innerWidth > 920 ? rightPanel.left - 42 : width - 40;
+      const safeTop = 54;
+      const safeBottom = height - 54;
+      const safeWidth = Math.max(260, safeRight - safeLeft);
+      const safeHeight = Math.max(260, safeBottom - safeTop);
+      const widthScale = safeWidth / graphWidth;
+      const heightScale = safeHeight / graphHeight;
+      const scale = Math.min(1.18, Math.max(0.58, Math.min(widthScale * 1.08, heightScale * 1.16)));
+      transform = {
+        k: scale,
+        x: (safeLeft + safeRight) / 2 - ((minX + maxX) / 2) * scale,
+        y: (safeTop + safeBottom) / 2 - ((minY + maxY) / 2) * scale
+      };
+      applyTransform();
+    }
+
+    function applyTransform() {
+      viewport.setAttribute("transform", `translate(${transform.x} ${transform.y}) scale(${transform.k})`);
+    }
+
+    function tick() {
+      const centerPull = 0.004;
+      const linkStrength = 0.012;
+      const repelStrength = 14500;
+
+      edges.forEach(edge => {
+        const source = edge.sourceNode;
+        const target = edge.targetNode;
+        if (!source || !target) return;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const desired = 240 + Math.abs((target.bundle_depth || 0) - (source.bundle_depth || 0)) * 34;
+        const force = (distance - desired) * linkStrength;
+        const fx = (dx / distance) * force;
+        const fy = (dy / distance) * force;
+        source.vx += fx;
+        source.vy += fy;
+        target.vx -= fx;
+        target.vy -= fy;
+      });
+
+      for (let i = 0; i < nodes.length; i += 1) {
+        for (let j = i + 1; j < nodes.length; j += 1) {
+          const a = nodes[i];
+          const b = nodes[j];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const distanceSq = Math.max(120, dx * dx + dy * dy);
+          const distance = Math.sqrt(distanceSq);
+          const force = repelStrength / distanceSq;
+          const fx = (dx / distance) * force;
+          const fy = (dy / distance) * force;
+          a.vx -= fx;
+          a.vy -= fy;
+          b.vx += fx;
+          b.vy += fy;
+        }
+      }
+
+      nodes.forEach(node => {
+        if (node === draggingNode) return;
+        node.vx += -node.x * centerPull;
+        node.vy += -node.y * centerPull;
+        node.vx *= 0.84;
+        node.vy *= 0.84;
+        node.x += node.vx;
+        node.y += node.vy;
+      });
+      render();
+      requestAnimationFrame(tick);
+    }
+
+    function render() {
+      edgeLayer.innerHTML = "";
+      edgeLabelLayer.innerHTML = "";
+      nodeLayer.innerHTML = "";
+      edges.forEach(edge => {
+        const source = edge.sourceNode;
+        const target = edge.targetNode;
+        if (!source || !target) return;
+        const line = createSvg("line", {
+          x1: source.x,
+          y1: source.y,
+          x2: target.x,
+          y2: target.y,
+          class: `link ${edge.target_missing ? "missing" : ""} ${edge === selectedEdge ? "active" : ""}`,
+          "marker-end": "url(#arrow)"
+        });
+        line.addEventListener("click", event => {
+          event.stopPropagation();
+          selectedNode = null;
+          selectedEdge = edge;
+          showEdge(edge);
+          render();
+        });
+        edgeLayer.appendChild(line);
+        const label = createSvg("text", {
+          x: (source.x + target.x) / 2,
+          y: (source.y + target.y) / 2 - 5,
+          class: `link-label ${edge === selectedEdge ? "active" : ""}`,
+          "text-anchor": "middle"
+        });
+        label.textContent = edge.relation || "related_to";
+        edgeLabelLayer.appendChild(label);
+      });
+
+      nodes.forEach(node => {
+        const visible = matchesFilter(node);
+        const group = createSvg("g", {
+          class: `node ${node.missing ? "missing" : ""} ${node === selectedNode ? "active" : ""} ${visible ? "" : "dim"}`,
+          transform: `translate(${node.x} ${node.y})`
+        });
+        const circle = createSvg("circle", {
+          r: node.radius,
+          fill: node.missing ? "transparent" : bundleColor.get(node.bundle_id) || "#8d99ae"
+        });
+        const labelOnLeft = node.x > 80;
+        const text = createSvg("text", {
+          x: labelOnLeft ? -(node.radius + 8) : node.radius + 8,
+          y: 4,
+          "text-anchor": labelOnLeft ? "end" : "start"
+        });
+        text.textContent = node.title;
+        group.append(circle, text);
+        group.addEventListener("pointerdown", event => {
+          event.stopPropagation();
+          draggingNode = node;
+          selectedEdge = null;
+          selectedNode = node;
+          showNode(node);
+          render();
+          svg.setPointerCapture(event.pointerId);
+        });
+        group.addEventListener("click", event => event.stopPropagation());
+        nodeLayer.appendChild(group);
+      });
+    }
+
+    function showNode(node) {
+      const outgoing = edges.filter(edge => edge.source === node.id);
+      const incoming = edges.filter(edge => edge.target === node.id);
+      details.className = "";
+      details.innerHTML = `
+        <h2>Concept</h2>
+        <h3 class="detail-title">${escapeHtml(node.title)}</h3>
+        <p>${escapeHtml(node.description || "No description.")}</p>
+        <div class="tag-list">${(node.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
+        <div class="meta-grid">
+          <div class="meta"><span>Type</span><code>${escapeHtml(node.type || "unknown")}</code></div>
+          <div class="meta"><span>Owner</span><code>${escapeHtml(ownerName(node.owner))}</code></div>
+          <div class="meta"><span>Connections</span><code>${escapeHtml(node.degree || 0)}</code></div>
+          <div class="meta"><span>Bundle</span><code>${escapeHtml(node.bundle_ancestry.length ? node.bundle_ancestry.join(" / ") : "root")}</code></div>
+          <div class="meta"><span>Path</span><code>${escapeHtml(node.path)}</code></div>
+        </div>
+        <h2>Relations</h2>
+        <div class="edge-list">
+          ${[...outgoing, ...incoming].map(edge => `
+            <div class="edge-card" data-edge="${escapeHtml(edge.source + "|" + edge.target + "|" + edge.relation)}">
+              <strong>${escapeHtml(edge.source === node.id ? "To " + (nodeById.get(edge.target)?.title || edge.name) : "From " + (nodeById.get(edge.source)?.title || "Unknown"))}</strong>
+              <span>${escapeHtml(edge.relation || "related_to")}: ${escapeHtml(edge.description || "")}</span>
+            </div>
+          `).join("") || "<p>No relations found.</p>"}
+        </div>
+      `;
+      [...details.querySelectorAll(".edge-card")].forEach(card => {
+        card.addEventListener("click", () => {
+          const [source, target, relation] = card.dataset.edge.split("|");
+          selectedEdge = edges.find(edge => edge.source === source && edge.target === target && edge.relation === relation);
+          selectedNode = null;
+          if (selectedEdge) showEdge(selectedEdge);
+          render();
+        });
+      });
+    }
+
+    function showEdge(edge) {
+      details.className = "";
+      details.innerHTML = `
+        <h2>Relation</h2>
+        <h3 class="detail-title">${escapeHtml(edge.relation || "related_to")}</h3>
+        <p>${escapeHtml(edge.description || "No description.")}</p>
+        <div class="meta-grid">
+          <div class="meta"><span>From</span><code>${escapeHtml(edge.sourceNode?.title || edge.source)}</code></div>
+          <div class="meta"><span>To</span><code>${escapeHtml(edge.targetNode?.title || edge.name || edge.target)}</code></div>
+          <div class="meta"><span>Target path</span><code>${escapeHtml(edge.target || "unresolved")}</code></div>
+          <div class="meta"><span>Status</span><code>${edge.target_missing ? "missing target" : "resolved target"}</code></div>
+        </div>
+      `;
+    }
+
+    function clearSelection() {
+      selectedNode = null;
+      selectedEdge = null;
+      search.value = "";
+      filterText = "";
+      details.className = "detail-empty";
+      details.innerHTML = "<p>Select a concept or relation to inspect metadata and graph context.</p>";
+      render();
+    }
+
+    search.addEventListener("input", () => {
+      filterText = search.value.trim().toLowerCase();
+      render();
+    });
+
+    fitButton.addEventListener("click", fitGraph);
+    clearButton.addEventListener("click", clearSelection);
+
+    svg.addEventListener("wheel", event => {
+      event.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      const nextScale = Math.min(3, Math.max(0.35, transform.k * (event.deltaY > 0 ? 0.9 : 1.1)));
+      const worldX = (mx - transform.x) / transform.k;
+      const worldY = (my - transform.y) / transform.k;
+      transform.x = mx - worldX * nextScale;
+      transform.y = my - worldY * nextScale;
+      transform.k = nextScale;
+      applyTransform();
+    }, { passive: false });
+
+    svg.addEventListener("pointerdown", event => {
+      if (event.target.closest(".node")) return;
+      panning = { x: event.clientX, y: event.clientY, tx: transform.x, ty: transform.y };
+      svg.classList.add("panning");
+      svg.setPointerCapture(event.pointerId);
+    });
+
+    svg.addEventListener("pointermove", event => {
+      if (draggingNode) {
+        const rect = svg.getBoundingClientRect();
+        draggingNode.x = (event.clientX - rect.left - transform.x) / transform.k;
+        draggingNode.y = (event.clientY - rect.top - transform.y) / transform.k;
+        draggingNode.vx = 0;
+        draggingNode.vy = 0;
+        render();
+      } else if (panning) {
+        transform.x = panning.tx + event.clientX - panning.x;
+        transform.y = panning.ty + event.clientY - panning.y;
+        applyTransform();
+      }
+    });
+
+    svg.addEventListener("pointerup", () => {
+      draggingNode = null;
+      panning = null;
+      svg.classList.remove("panning");
+    });
+
+    svg.addEventListener("click", () => {
+      if (!draggingNode && !panning) clearSelection();
+    });
+
+    window.addEventListener("resize", resize);
+    resize();
+    tick();
+    setTimeout(fitGraph, 900);
+    setTimeout(fitGraph, 1800);
+    if (nodes.length) showNode(nodes[0]);
+  </script>
+</body>
+</html>

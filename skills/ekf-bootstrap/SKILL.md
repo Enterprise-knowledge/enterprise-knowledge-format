@@ -1,6 +1,6 @@
 ---
 name: ekf-bootstrap
-description: Use when creating, initializing, scaffolding, expanding, validating, or linting an Enterprise Knowledge Format knowledge base, EKF bundle, nested bundle, source area, or starter company knowledge repository.
+description: Use when creating, initializing, scaffolding, expanding, validating, linting, parsing, or graph-visualizing an Enterprise Knowledge Format knowledge base, EKF bundle, nested bundle, source area, or starter company knowledge repository.
 ---
 
 # EKF Bootstrap
@@ -49,6 +49,15 @@ uv run --with pyyaml python <ekf-bootstrap-skill-dir>/scripts/validate_ekf.py ./
 
 The validator prints every bad path with a short reason and exits non-zero when the bundle has format problems. Use `--paths-only` when a caller only needs the affected file or directory paths.
 
+Parse a bundle into graph data for visualization:
+
+```sh
+uv run --with pyyaml python <ekf-bootstrap-skill-dir>/scripts/parse_ekf_graph.py ./my-company-ekf \
+  --output ./my-company-ekf/artifacts/graph/graph.json
+```
+
+The parser discovers recursively nested bundles, emits JSON by default, and supports `--format jsonl` when a line-oriented representation is useful.
+
 ## Bootstrap Workflow
 
 1. Identify the target directory, root title, owner, and EKF version.
@@ -59,6 +68,44 @@ The validator prints every bad path with a short reason and exits non-zero when 
 6. Write short descriptions everywhere: indexes, bundle listings, sources, artifacts, and relations.
 7. Keep concept discovery possible with plain text tools such as `rg` and `grep`.
 8. Run `scripts/validate_ekf.py` against the generated or modified EKF bundle before reporting results.
+
+## Graph Visualization Workflow
+
+When asked to visualize an EKF knowledge graph:
+
+1. Validate the bundle with `scripts/validate_ekf.py`.
+2. Parse graph data with `scripts/parse_ekf_graph.py`.
+3. Start from `assets/graph-template.html` for consistent output. Copy it to one self-contained `.html` artifact under `artifacts/html/` or a nested bundle's `artifacts/html/`.
+4. Replace the `__EKF_GRAPH_JSON__` marker with the parsed graph JSON. Do not require a CDN, generated search service, graph database, or separate runtime.
+5. Preserve the template's corrected interaction patterns: floating panels over a full-screen canvas, pointer-down concept selection, degree-scaled node sizes, hidden relation labels until relation selection, panel-aware fit, delayed re-fit after force layout settles, pan and zoom, draggable nodes, search, type and bundle coloring, missing-target styling, and relation details.
+6. Use `bundle_ancestry` and `bundle_depth` from the parser output to make recursive bundle structure visible. Customize copy, colors, or detail fields only when the user asks or the bundle audience clearly needs it.
+
+Let the parser provide deterministic graph data only. Let the template provide the default graph UI. Let the agent adapt the HTML only where the user's audience or bundle size requires it.
+
+Example template fill:
+
+```sh
+python3 - <<'PY'
+from pathlib import Path
+template = Path("<ekf-bootstrap-skill-dir>/assets/graph-template.html").read_text(encoding="utf-8")
+graph = Path("<bundle>/artifacts/graph/graph.json").read_text(encoding="utf-8").replace("</", "<\\/")
+out = Path("<bundle>/artifacts/html/knowledge-graph/index.html")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(template.replace("__EKF_GRAPH_JSON__", graph), encoding="utf-8")
+PY
+```
+
+Graph JSON has this shape:
+
+```json
+{
+  "nodes": [],
+  "edges": [],
+  "bundles": []
+}
+```
+
+Node records include `id`, `path`, `title`, `type`, `description`, `status`, `owner`, `tags`, `bundle_id`, `bundle_path`, `bundle_depth`, and `bundle_ancestry`. Edge records include `source`, `target`, `relation`, `description`, `name`, and `target_missing`. Bundle records include `id`, `path`, `title`, `description`, `status`, `owner`, `depth`, and `ancestry`.
 
 ## Source-to-Knowledge Workflow
 
@@ -149,7 +196,7 @@ If the host blocks user-level installs, create and activate a virtual environmen
 The validator checks the authoring-conformance rules that are practical to verify mechanically:
 
 - Required bundle paths exist.
-- Root and nested bundle indexes have parseable frontmatter with required bundle metadata.
+- Root and recursively nested bundle indexes have parseable frontmatter with required bundle metadata.
 - Every `knowledge/` directory has an `index.md`.
 - Concept markdown under `knowledge/` has YAML frontmatter and required fields.
 - `sources`, `related`, and `tags` have the expected list shapes.

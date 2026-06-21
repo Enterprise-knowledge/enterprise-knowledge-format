@@ -1,4 +1,4 @@
 interface:
   display_name: "EKF Bootstrap"
-  short_description: "Bootstrap, grow, and validate EKF knowledge bases"
-  default_prompt: "Use $ekf-bootstrap to create or validate an EKF repository, then turn added source material into governed markdown concepts with provenance."
+  short_description: "Bootstrap, validate, parse, and visualize EKF graphs"
+  default_prompt: "Use $ekf-bootstrap to create or validate an EKF repository, parse its recursive knowledge graph, and produce governed markdown concepts or templated self-contained graph visualizations."
