@@ -39,7 +39,7 @@ uv run python <ekf-bootstrap-skill-dir>/scripts/bootstrap_ekf.py ./my-company-ek
 
 The script creates only starter files. After it runs, customize names, descriptions, owners, tags, source manifests, and relations for the real organization.
 
-Prefer `uv run python` when `uv` is available on the target host. Fall back to `python3` when `uv` is unavailable. In restricted environments, set `UV_CACHE_DIR` to a writable temporary path.
+Prefer `uv run python` when `uv` is available on the target host. For persistent Python requirements, prefer a local `pyproject.toml` managed by `uv`; create one with `uv init --bare` when needed, then add requirements with `uv add`. Fall back to `python3` when `uv` is unavailable. If any Python requirement is needed and `uv` is unavailable, create a local virtual environment and install requirements inside it before running the command. Do not rely on user-level or global Python package installs. In restricted environments, set `UV_CACHE_DIR` and `PYTHONPYCACHEPREFIX` to writable temporary paths.
 
 Validate a bundle with the bundled linter:
 
@@ -184,14 +184,24 @@ For a generated or modified EKF bundle, run:
 uv run --with pyyaml python <ekf-bootstrap-skill-dir>/scripts/validate_ekf.py <bundle>
 ```
 
-When `uv` is unavailable, install PyYAML in the active Python environment, then use `python3`:
+For durable local tooling, use `uv` to create or update a `pyproject.toml` and run through that environment:
 
 ```sh
-python3 -m pip install --user pyyaml
-python3 <ekf-bootstrap-skill-dir>/scripts/validate_ekf.py <bundle>
+uv init --bare
+uv add pyyaml
+uv run python <ekf-bootstrap-skill-dir>/scripts/validate_ekf.py <bundle>
 ```
 
-If the host blocks user-level installs, create and activate a virtual environment first, then run `python -m pip install pyyaml`.
+When `uv` is unavailable, create a local virtual environment, install the required Python packages inside it, then use that environment's Python:
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install pyyaml
+python <ekf-bootstrap-skill-dir>/scripts/validate_ekf.py <bundle>
+```
+
+Use the same project environment or virtual environment for `parse_ekf_graph.py` or other Python helper scripts with package requirements.
 
 The validator checks the authoring-conformance rules that are practical to verify mechanically:
 

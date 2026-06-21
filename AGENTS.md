@@ -46,7 +46,7 @@ When maintaining this repository, preserve these priorities:
 
 ## Maintenance Workflow
 
-Prefer `uv` and `uvx` for Python execution and tool-based testing when they are available on the target host. Fall back to `python3` only when `uv` or `uvx` is unavailable. In restricted environments, set `UV_CACHE_DIR` and `UV_TOOL_DIR` to writable temporary paths.
+Prefer `uv` and `uvx` for Python execution and tool-based testing when they are available on the target host. For persistent Python requirements, prefer a local `pyproject.toml` managed by `uv`; create one with `uv init --bare` when needed, then add requirements with `uv add`. Fall back to `python3` only when `uv` or `uvx` is unavailable. If any Python requirement is needed and `uv` is unavailable, create a local virtual environment and install requirements inside it before running the command. Do not rely on user-level or global Python package installs. In restricted environments, set `UV_CACHE_DIR`, `UV_TOOL_DIR`, and `PYTHONPYCACHEPREFIX` to writable temporary paths.
 
 Before editing the standard:
 
@@ -62,9 +62,19 @@ Suggested verification commands:
 ```sh
 rg -n "[B]igQuery|[G]oogle Cloud|[G]CP|[A]WS|[A]zure|[S]nowflake|[D]atabricks" SPEC.md AGENTS.md
 rg -n "[T]ODO|[T]BD|[F]IXME" SPEC.md AGENTS.md skills/ekf-bootstrap
+# Verification
 UV_CACHE_DIR=/tmp/uv-cache uv run --with pyyaml python ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py skills/ekf-bootstrap
 UV_CACHE_DIR=/tmp/uv-cache PYTHONPYCACHEPREFIX=/tmp/ekf-pycache uv run python -m py_compile skills/ekf-bootstrap/scripts/bootstrap_ekf.py
 UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools uvx --with pyyaml python -c "import yaml"
+
+# Persistent Python requirements when uv is available
+uv init --bare
+uv add "$REQUIREMENT"
+
+# Python requirements when uv is unavailable
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install "$REQUIREMENT"
 ```
 
 Vendor names may appear only when discussing what EKF should avoid or when a future section explicitly compares formats. Unresolved placeholders should not remain in the standard.

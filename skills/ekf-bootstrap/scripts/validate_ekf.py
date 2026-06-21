@@ -17,7 +17,10 @@ except ImportError:  # pragma: no cover - exercised only on hosts without PyYAML
     print(
         "PyYAML is required. Run with: uv run --with pyyaml python "
         "<ekf-bootstrap-skill-dir>/scripts/validate_ekf.py <bundle>\n"
-        "Without uv, install it with: python3 -m pip install --user pyyaml",
+        "For durable local tooling, use uv init --bare and uv add pyyaml. "
+        "Without uv, create a local venv and install requirements there:\n"
+        "python3 -m venv .venv && . .venv/bin/activate && "
+        "python -m pip install pyyaml",
         file=sys.stderr,
     )
     sys.exit(2)
