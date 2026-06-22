@@ -75,9 +75,9 @@ When asked to visualize an EKF knowledge graph:
 
 1. Validate the bundle with `scripts/validate_ekf.py`.
 2. Parse graph data with `scripts/parse_ekf_graph.py`.
-3. Start from `assets/graph-template.html` for consistent output. Copy it to one self-contained `.html` artifact under `artifacts/html/` or a nested bundle's `artifacts/html/`.
-4. Replace the `__EKF_GRAPH_JSON__` marker with the parsed graph JSON. Do not require a CDN, generated search service, graph database, or separate runtime.
-5. Preserve the template's corrected interaction patterns: floating panels over a full-screen canvas, pointer-down concept selection, degree-scaled node sizes, hidden relation labels until relation selection, panel-aware fit, delayed re-fit after force layout settles, pan and zoom, draggable nodes, search, type and bundle coloring, missing-target styling, and relation details.
+3. Start from `assets/graph-template.html` for consistent output. Copy it to one single `.html` artifact under `artifacts/html/` or a nested bundle's `artifacts/html/`.
+4. Replace the `__EKF_GRAPH_JSON__` marker with the parsed graph JSON. The template loads Graphology and Sigma from CDN script tags in the HTML header, but does not require a generated search service, graph database, build step, or separate runtime.
+5. Preserve the template's corrected interaction patterns: floating panels over a full-screen Sigma canvas, accessible clustered layout, degree-scaled node sizes, zoom-aware labels, quiet background edges, relation selection, pan and zoom, search, cluster filtering, 1-hop and 2-hop focus, bundle coloring, missing-target styling, and relation details.
 6. Use `bundle_ancestry` and `bundle_depth` from the parser output to make recursive bundle structure visible. Customize copy, colors, or detail fields only when the user asks or the bundle audience clearly needs it.
 
 Let the parser provide deterministic graph data only. Let the template provide the default graph UI. Let the agent adapt the HTML only where the user's audience or bundle size requires it.

@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EKF Knowledge Graph</title>
+  <script src="https://cdn.jsdelivr.net/npm/graphology@0.25.4/dist/graphology.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sigma@2.4.0/build/sigma.min.js"></script>
   <style>
     :root {
       --bg: #101113;
@@ -157,6 +159,67 @@
       font-weight: 680;
     }
 
+    .mode-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .mode-row button,
+    .cluster-button {
+      min-height: 30px;
+      border: 1px solid rgba(21, 23, 25, 0.12);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.58);
+      color: #2a2f32;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .mode-row button.active,
+    .cluster-button.active {
+      border-color: rgba(22, 160, 133, 0.5);
+      background: rgba(22, 160, 133, 0.14);
+      color: #0f5f52;
+    }
+
+    .cluster-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .cluster-button {
+      display: grid;
+      grid-template-columns: 12px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 6px 8px;
+      text-align: left;
+    }
+
+    .cluster-button span:nth-child(2) {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cluster-count {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .search-hint {
+      min-height: 18px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.3;
+    }
+
     .legend {
       display: grid;
       gap: 8px;
@@ -220,6 +283,10 @@
       background: rgba(8, 10, 11, 0.48);
       font-size: 12px;
       pointer-events: none;
+    }
+
+    .hint.ready {
+      color: rgba(255, 255, 255, 0.82);
     }
 
     .link {
@@ -393,17 +460,25 @@
         <div class="stat"><strong id="bundleCount">0</strong><span>bundles</span></div>
       </div>
       <input id="search" class="search" type="search" placeholder="Search concepts, types, tags">
+      <div id="searchHint" class="search-hint"></div>
       <div class="button-row">
         <button id="fitButton" type="button">Fit</button>
         <button id="clearButton" type="button">Clear</button>
       </div>
+      <div class="mode-row" aria-label="Neighborhood focus">
+        <button id="allMode" class="active" type="button">All</button>
+        <button id="oneHopMode" type="button">1-hop</button>
+        <button id="twoHopMode" type="button">2-hop</button>
+      </div>
       <h2>Bundles</h2>
       <div id="legend" class="legend"></div>
+      <h2>Clusters</h2>
+      <div id="clusterList" class="cluster-list"></div>
     </aside>
 
     <section class="graph-wrap" aria-label="Interactive knowledge graph">
-      <svg id="graph" role="img" aria-label="Force-directed EKF graph"></svg>
-      <div class="hint">Wheel to zoom. Drag the canvas to pan. Drag nodes to rearrange.</div>
+      <div id="graph" role="img" aria-label="Clustered EKF graph"></div>
+      <div id="graphStatus" class="hint">Preparing clustered layout...</div>
     </section>
 
     <aside class="panel right" aria-label="Selected concept details">
@@ -415,116 +490,27 @@
 
   <script id="graph-data" type="application/json">__EKF_GRAPH_JSON__</script>
   <script>
-    const graph = JSON.parse(document.getElementById("graph-data").textContent);
-    const svg = document.getElementById("graph");
+    const sourceGraph = JSON.parse(document.getElementById("graph-data").textContent);
+    const graphEl = document.getElementById("graph");
     const details = document.getElementById("details");
     const search = document.getElementById("search");
+    const searchHint = document.getElementById("searchHint");
     const fitButton = document.getElementById("fitButton");
     const clearButton = document.getElementById("clearButton");
-    const palette = ["#16a085", "#d96c52", "#4f7cac", "#b06ab3", "#e0a82e", "#6ab47b"];
-    const bundleColor = new Map(graph.bundles.map((bundle, index) => [bundle.id, palette[index % palette.length]]));
-    const degreeById = new Map();
-    graph.nodes.forEach(node => degreeById.set(node.id, 0));
-    graph.edges.forEach(edge => {
-      degreeById.set(edge.source, (degreeById.get(edge.source) || 0) + 1);
-      degreeById.set(edge.target, (degreeById.get(edge.target) || 0) + 1);
-    });
-    const degreeValues = [...degreeById.values()];
-    const minDegree = degreeValues.length ? Math.min(...degreeValues) : 0;
-    const maxDegree = degreeValues.length ? Math.max(...degreeValues) : 0;
-
-    function radiusForDegree(degree, depth) {
-      if (maxDegree === minDegree) return 13;
-      const t = (degree - minDegree) / (maxDegree - minDegree);
-      return 9 + t * 15 + Math.max(0, 2 - depth) * 0.6;
-    }
-
-    const nodes = graph.nodes.map((node, index) => {
-      const degree = degreeById.get(node.id) || 0;
-      return {
-        ...node,
-        degree,
-        x: Math.cos((index / Math.max(1, graph.nodes.length)) * Math.PI * 2) * 300,
-        y: Math.sin((index / Math.max(1, graph.nodes.length)) * Math.PI * 2) * 220,
-        vx: 0,
-        vy: 0,
-        radius: radiusForDegree(degree, node.bundle_depth || 0)
-      };
-    });
-
-    const nodeById = new Map(nodes.map(node => [node.id, node]));
-    const missingNodes = [];
-    graph.edges.forEach(edge => {
-      if (!nodeById.has(edge.target)) {
-        const node = {
-          id: edge.target || "unresolved-target",
-          path: edge.target || "unresolved-target",
-          title: edge.name || "Missing target",
-          type: "missing",
-          description: "This relation target was not found in the parsed graph.",
-          status: "missing",
-          owner: null,
-          tags: [],
-          bundle_id: "missing",
-          bundle_path: "",
-          bundle_depth: 0,
-          bundle_ancestry: [],
-          degree: 1,
-          x: 240,
-          y: 120,
-          vx: 0,
-          vy: 0,
-          radius: 10,
-          missing: true
-        };
-        nodeById.set(node.id, node);
-        missingNodes.push(node);
-      }
-    });
-    nodes.push(...missingNodes);
-    const edges = graph.edges.map(edge => ({ ...edge, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }));
-    let selectedNode = null;
-    let selectedEdge = null;
-    let filterText = "";
-    let transform = { x: 0, y: 0, k: 1 };
-    let draggingNode = null;
-    let panning = null;
-    let width = 0;
-    let height = 0;
-
-    document.getElementById("nodeCount").textContent = graph.nodes.length;
-    document.getElementById("edgeCount").textContent = graph.edges.length;
-    document.getElementById("bundleCount").textContent = graph.bundles.length;
-
-    const legend = document.getElementById("legend");
-    legend.innerHTML = graph.bundles.map(bundle => `
-      <div class="legend-item">
-        <span class="dot" style="background:${bundleColor.get(bundle.id)}"></span>
-        <span>${escapeHtml(bundle.title)}</span>
-        <span class="bundle-path">depth ${bundle.depth}</span>
-      </div>
-    `).join("");
-
-    const defs = createSvg("defs");
-    const marker = createSvg("marker", { id: "arrow", markerWidth: 10, markerHeight: 10, refX: 9, refY: 3, orient: "auto", markerUnits: "strokeWidth" });
-    marker.appendChild(createSvg("path", { d: "M0,0 L0,6 L9,3 z", fill: "rgba(255,255,255,0.55)" }));
-    defs.appendChild(marker);
-    svg.appendChild(defs);
-    const viewport = createSvg("g");
-    const edgeLayer = createSvg("g");
-    const edgeLabelLayer = createSvg("g");
-    const nodeLayer = createSvg("g");
-    viewport.append(edgeLayer, edgeLabelLayer, nodeLayer);
-    svg.appendChild(viewport);
-
-    function createSvg(tag, attrs = {}) {
-      const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
-      Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
-      return element;
-    }
+    const allMode = document.getElementById("allMode");
+    const oneHopMode = document.getElementById("oneHopMode");
+    const twoHopMode = document.getElementById("twoHopMode");
+    const graphStatus = document.getElementById("graphStatus");
+    const clusterList = document.getElementById("clusterList");
+    const palette = ["#16a085", "#d96c52", "#4f7cac", "#b06ab3", "#e0a82e", "#6ab47b", "#d95f8d", "#5b8c5a", "#7f6bb2", "#c77d2b", "#2f9fb3", "#d14b4b"];
+    const familyCodes = new Set(["ac", "at", "au", "ca", "cm", "cp", "ia", "ir", "ma", "mp", "pe", "pl", "pm", "ps", "pt", "ra", "sa", "sc", "si", "sr"]);
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" }[char]));
+    }
+
+    function titleCase(value) {
+      return String(value || "unknown").replace(/[_-]+/g, " ").replace(/\b\w/g, char => char.toUpperCase());
     }
 
     function ownerName(owner) {
@@ -533,173 +519,394 @@
       return owner.name || JSON.stringify(owner);
     }
 
-    function matchesFilter(node) {
-      if (!filterText) return true;
-      const haystack = [node.title, node.type, node.description, node.bundle_id, node.path, ...(node.tags || [])].join(" ").toLowerCase();
-      return haystack.includes(filterText);
+    function compactLabel(node) {
+      const title = String(node.title || node.path || node.id || "Untitled");
+      const codeMatch = title.match(/^([A-Z]{2}(?:-\d+(?:\.\d+)?)?)\s+-\s+/);
+      if (codeMatch) return codeMatch[1];
+      if (title.length <= 16) return title;
+      return `${title.slice(0, 14)}...`;
     }
 
-    function resize() {
-      const rect = svg.getBoundingClientRect();
-      width = rect.width;
-      height = rect.height;
-      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-      if (!transform.x && !transform.y) fitGraph();
+    let currentCameraRatio = 2.4;
+
+    function clamp(min, value, max) {
+      return Math.max(min, Math.min(max, value));
     }
 
-    function fitGraph() {
-      if (!nodes.length) return;
-      const minX = Math.min(...nodes.map(node => node.x));
-      const maxX = Math.max(...nodes.map(node => node.x));
-      const minY = Math.min(...nodes.map(node => node.y));
-      const maxY = Math.max(...nodes.map(node => node.y));
-      const graphWidth = Math.max(1, maxX - minX);
-      const graphHeight = Math.max(1, maxY - minY);
-      const leftPanel = document.querySelector(".left").getBoundingClientRect();
-      const rightPanel = document.querySelector(".right").getBoundingClientRect();
-      const safeLeft = window.innerWidth > 920 ? leftPanel.right + 42 : 40;
-      const safeRight = window.innerWidth > 920 ? rightPanel.left - 42 : width - 40;
-      const safeTop = 54;
-      const safeBottom = height - 54;
-      const safeWidth = Math.max(260, safeRight - safeLeft);
-      const safeHeight = Math.max(260, safeBottom - safeTop);
-      const widthScale = safeWidth / graphWidth;
-      const heightScale = safeHeight / graphHeight;
-      const scale = Math.min(1.18, Math.max(0.58, Math.min(widthScale * 1.08, heightScale * 1.16)));
-      transform = {
-        k: scale,
-        x: (safeLeft + safeRight) / 2 - ((minX + maxX) / 2) * scale,
-        y: (safeTop + safeBottom) / 2 - ((minY + maxY) / 2) * scale
+    function labelSizeForCamera(degree = 1) {
+      const degreeT = maxDegree === minDegree ? 0 : clamp(0, (degree - minDegree) / (maxDegree - minDegree), 1);
+      const zoomProgress = clamp(0, (2.8 - currentCameraRatio) / 2.72, 1);
+      const zoomSize = 4 + zoomProgress * 4.15;
+      const degreeBoost = Math.pow(degreeT, 0.62) * 1.1;
+      return clamp(4, zoomSize + degreeBoost, 9.4);
+    }
+
+    function drawAdaptiveLabel(context, data) {
+      if (!data.label) return;
+      const degree = data.raw?.degree || 1;
+      const size = labelSizeForCamera(degree);
+      const degreeT = maxDegree === minDegree ? 0 : clamp(0, (degree - minDegree) / (maxDegree - minDegree), 1);
+      const zoomAlpha = clamp(0, (2.55 - currentCameraRatio) / 2.1, 1);
+      const alpha = clamp(0.42, 0.5 + zoomAlpha * 0.16 + Math.pow(degreeT, 0.55) * 0.24, 0.92);
+      const x = data.x + data.size + 3.5;
+      const y = data.y;
+      context.save();
+      context.font = `650 ${size}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      context.textBaseline = "middle";
+      context.lineJoin = "round";
+      context.lineWidth = Math.max(1.6, size * 0.46);
+      context.strokeStyle = `rgba(7, 9, 10, ${clamp(0.72, alpha + 0.18, 0.96)})`;
+      context.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      context.strokeText(data.label, x, y);
+      context.fillText(data.label, x, y);
+      context.restore();
+    }
+
+    function nodeCluster(node) {
+      const tags = (node.tags || []).map(tag => String(tag).toLowerCase());
+      const family = tags.find(tag => familyCodes.has(tag));
+      if (family) return family.toUpperCase();
+      if ((node.type || "").startsWith("framework_")) return "Framework";
+      if ((node.type || "").includes("publication")) return "Publication";
+      if ((node.type || "").includes("profile")) return "Profile";
+      if ((node.type || "").includes("risk")) return "Risk";
+      if ((node.type || "").includes("trustworthiness")) return "Trust";
+      return titleCase(node.type || "Other");
+    }
+
+    const degreeById = new Map();
+    sourceGraph.nodes.forEach(node => degreeById.set(node.id, 0));
+    sourceGraph.edges.forEach(edge => {
+      degreeById.set(edge.source, (degreeById.get(edge.source) || 0) + 1);
+      degreeById.set(edge.target, (degreeById.get(edge.target) || 0) + 1);
+    });
+    const degreeValues = [...degreeById.values()];
+    const minDegree = degreeValues.length ? Math.min(...degreeValues) : 0;
+    const maxDegree = degreeValues.length ? Math.max(...degreeValues) : 0;
+
+    function sizeForDegree(degree) {
+      if (maxDegree === minDegree) return 6;
+      if (degree <= 1) return 0.75;
+      if (degree === 2) return 1.05;
+      if (degree === 3) return 1.35;
+      const lower = Math.log1p(3);
+      const upper = Math.log1p(maxDegree);
+      const t = upper === lower ? 1 : clamp(0, (Math.log1p(degree) - lower) / (upper - lower), 1);
+      return 1.5 + Math.pow(t, 2.35) * 34;
+    }
+
+    function renderedNodeSize(node, baseSize) {
+      const zoomOut = clamp(0, (currentCameraRatio - 0.65) / 1.85, 1);
+      const zoomIn = clamp(0, (0.42 - currentCameraRatio) / 0.34, 1);
+      const scale = 1 - zoomOut * 0.32 + zoomIn * 0.16;
+      const minimum = node.degree <= 1 ? 0.55 : 0.8;
+      return Math.max(minimum, baseSize * scale);
+    }
+
+    function shouldShowLabel(node, matched) {
+      if (node.id === selectedNode?.id || node.id === hoveredNode || (filterText && matched)) return true;
+      if (currentCameraRatio <= 0.2) return true;
+      if (currentCameraRatio <= 0.48) return node.degree >= 5 || node.clusterRank <= 8;
+      if (currentCameraRatio <= 0.82) return node.degree >= 12 || node.clusterRank <= 3;
+      if (currentCameraRatio <= 1.35) return node.degree >= 24 || node.clusterRank <= 1 || node.type === "publication";
+      if (currentCameraRatio <= 2.15) return node.degree >= 38 || node.clusterRank === 0 || node.type === "publication";
+      return node.clusterRank === 0 || node.type === "publication";
+    }
+
+    const nodes = sourceGraph.nodes.map(node => {
+      const degree = degreeById.get(node.id) || 0;
+      const cluster = nodeCluster(node);
+      const baseSize = sizeForDegree(degree);
+      const typeBoost = node.type === "publication" ? 1.75 : ((node.type || "").startsWith("framework_") || node.type === "control_family" ? 1.12 : 1);
+      return {
+        ...node,
+        cluster,
+        degree,
+        searchText: [node.title, node.type, node.description, node.bundle_id, node.path, ...(node.tags || [])].join(" ").toLowerCase(),
+        size: Math.min(42, baseSize * typeBoost)
       };
-      applyTransform();
-    }
+    });
+    const nodeById = new Map(nodes.map(node => [node.id, node]));
 
-    function applyTransform() {
-      viewport.setAttribute("transform", `translate(${transform.x} ${transform.y}) scale(${transform.k})`);
-    }
-
-    function tick() {
-      const centerPull = 0.004;
-      const linkStrength = 0.012;
-      const repelStrength = 14500;
-
-      edges.forEach(edge => {
-        const source = edge.sourceNode;
-        const target = edge.targetNode;
-        if (!source || !target) return;
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        const desired = 240 + Math.abs((target.bundle_depth || 0) - (source.bundle_depth || 0)) * 34;
-        const force = (distance - desired) * linkStrength;
-        const fx = (dx / distance) * force;
-        const fy = (dy / distance) * force;
-        source.vx += fx;
-        source.vy += fy;
-        target.vx -= fx;
-        target.vy -= fy;
+    sourceGraph.edges.forEach(edge => {
+      [edge.source, edge.target].forEach(id => {
+        if (!id || nodeById.has(id)) return;
+        const missing = {
+          id,
+          path: id,
+          title: edge.name || "Missing target",
+          type: "missing",
+          description: "This relation endpoint was not found in the parsed graph.",
+          status: "missing",
+          owner: null,
+          tags: [],
+          bundle_id: "missing",
+          bundle_path: "",
+          bundle_depth: 0,
+          bundle_ancestry: [],
+          cluster: "Missing",
+          degree: 1,
+          searchText: id.toLowerCase(),
+          size: 1.4,
+          missing: true
+        };
+        nodeById.set(id, missing);
+        nodes.push(missing);
       });
+    });
 
-      for (let i = 0; i < nodes.length; i += 1) {
-        for (let j = i + 1; j < nodes.length; j += 1) {
-          const a = nodes[i];
-          const b = nodes[j];
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const distanceSq = Math.max(120, dx * dx + dy * dy);
-          const distance = Math.sqrt(distanceSq);
-          const force = repelStrength / distanceSq;
-          const fx = (dx / distance) * force;
-          const fy = (dy / distance) * force;
-          a.vx -= fx;
-          a.vy -= fy;
-          b.vx += fx;
-          b.vy += fy;
+    const edges = sourceGraph.edges
+      .filter(edge => nodeById.has(edge.source) && nodeById.has(edge.target))
+      .map((edge, index) => ({ ...edge, key: `e${index}`, sourceNode: nodeById.get(edge.source), targetNode: nodeById.get(edge.target) }));
+
+    const clusters = [...nodes.reduce((map, node) => {
+      if (!map.has(node.cluster)) map.set(node.cluster, []);
+      map.get(node.cluster).push(node);
+      return map;
+    }, new Map()).entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+
+    const clusterColor = new Map(clusters.map(([cluster], index) => [cluster, palette[index % palette.length]]));
+    clusters.forEach(([, clusterNodes]) => {
+      [...clusterNodes]
+        .sort((a, b) => b.degree - a.degree || a.title.localeCompare(b.title))
+        .forEach((node, rank) => {
+          node.clusterRank = rank;
+        });
+    });
+    const clusterCenter = new Map();
+    const clusterRadius = new Map();
+    clusters.forEach(([cluster, clusterNodes]) => {
+      const largestNode = Math.max(...clusterNodes.map(node => node.size));
+      clusterRadius.set(cluster, 220 + Math.sqrt(clusterNodes.length) * 30 + largestNode * 5.8);
+    });
+    const placedClusters = [];
+    clusters.forEach(([cluster], index) => {
+      const radius = clusterRadius.get(cluster);
+      if (index === 0) {
+        clusterCenter.set(cluster, { x: 0, y: 0 });
+        placedClusters.push({ x: 0, y: 0, radius });
+        return;
+      }
+      let placed = false;
+      for (let ring = 0; ring < 80 && !placed; ring += 1) {
+        const orbit = 560 + ring * 185;
+        const slots = Math.max(8, Math.ceil((Math.PI * 2 * orbit) / Math.max(260, radius * 0.82)));
+        for (let slot = 0; slot < slots && !placed; slot += 1) {
+          const angle = ((slot + (ring % 2) * 0.5) / slots) * Math.PI * 2 - Math.PI / 2;
+          const x = Math.cos(angle) * orbit;
+          const y = Math.sin(angle) * orbit;
+          const clear = placedClusters.every(other => {
+            const dx = other.x - x;
+            const dy = other.y - y;
+            const required = radius + other.radius + 260;
+            return dx * dx + dy * dy >= required * required;
+          });
+          if (clear) {
+            clusterCenter.set(cluster, { x, y });
+            placedClusters.push({ x, y, radius });
+            placed = true;
+          }
         }
       }
+      if (!placed) {
+        const fallbackAngle = index * 2.399963229728653 - Math.PI / 2;
+        const fallbackOrbit = 900 + index * 165;
+        const x = Math.cos(fallbackAngle) * fallbackOrbit;
+        const y = Math.sin(fallbackAngle) * fallbackOrbit;
+        clusterCenter.set(cluster, { x, y });
+        placedClusters.push({ x, y, radius });
+      }
+    });
 
-      nodes.forEach(node => {
-        if (node === draggingNode) return;
-        node.vx += -node.x * centerPull;
-        node.vy += -node.y * centerPull;
-        node.vx *= 0.84;
-        node.vy *= 0.84;
-        node.x += node.vx;
-        node.y += node.vy;
+    clusters.forEach(([cluster, clusterNodes]) => {
+      const center = clusterCenter.get(cluster);
+      const radius = clusterRadius.get(cluster);
+      const orderedNodes = [...clusterNodes].sort((a, b) => b.degree - a.degree || a.title.localeCompare(b.title));
+      const placed = [];
+      orderedNodes.forEach((node, index) => {
+        if (index === 0) {
+          node.x = center.x;
+          node.y = center.y;
+        } else {
+          let placedNode = false;
+          for (let attempt = 0; attempt < 900 && !placedNode; attempt += 1) {
+            const angle = attempt * 2.399963229728653 + index * 0.17;
+            const shell = Math.floor(attempt / 32);
+            const r = Math.min(radius * 1.9, 42 + shell * 24 + Math.sqrt(index) * 11);
+            const x = center.x + Math.cos(angle) * r;
+            const y = center.y + Math.sin(angle) * r;
+            const overlaps = placed.some(other => {
+              const dx = other.x - x;
+              const dy = other.y - y;
+              const minDistance = (node.size + other.size) * 6.2 + 46;
+              return dx * dx + dy * dy < minDistance * minDistance;
+            });
+            if (!overlaps) {
+              node.x = x;
+              node.y = y;
+              placedNode = true;
+            }
+          }
+          if (!placedNode) {
+            const angle = index * 2.399963229728653;
+            const r = radius + Math.sqrt(index) * 18;
+            node.x = center.x + Math.cos(angle) * r;
+            node.y = center.y + Math.sin(angle) * r;
+          }
+        }
+        node.vx = 0;
+        node.vy = 0;
+        placed.push(node);
       });
-      render();
-      requestAnimationFrame(tick);
+    });
+
+    const GraphClass = window.graphology?.MultiDirectedGraph || window.graphology?.MultiGraph || window.graphology?.Graph;
+    const SigmaClass = window.Sigma || window.sigma?.Sigma;
+    if (!GraphClass || !SigmaClass) {
+      graphStatus.textContent = "Graph library failed to load.";
+      throw new Error("Graphology or Sigma failed to load from CDN.");
     }
 
-    function render() {
-      edgeLayer.innerHTML = "";
-      edgeLabelLayer.innerHTML = "";
-      nodeLayer.innerHTML = "";
-      edges.forEach(edge => {
-        const source = edge.sourceNode;
-        const target = edge.targetNode;
-        if (!source || !target) return;
-        const line = createSvg("line", {
-          x1: source.x,
-          y1: source.y,
-          x2: target.x,
-          y2: target.y,
-          class: `link ${edge.target_missing ? "missing" : ""} ${edge === selectedEdge ? "active" : ""}`,
-          "marker-end": "url(#arrow)"
-        });
-        line.addEventListener("click", event => {
-          event.stopPropagation();
-          selectedNode = null;
-          selectedEdge = edge;
-          showEdge(edge);
-          render();
-        });
-        edgeLayer.appendChild(line);
-        const label = createSvg("text", {
-          x: (source.x + target.x) / 2,
-          y: (source.y + target.y) / 2 - 5,
-          class: `link-label ${edge === selectedEdge ? "active" : ""}`,
-          "text-anchor": "middle"
-        });
-        label.textContent = edge.relation || "related_to";
-        edgeLabelLayer.appendChild(label);
+    const renderGraph = new GraphClass();
+    nodes.forEach(node => {
+      renderGraph.addNode(node.id, {
+        x: node.x,
+        y: node.y,
+        label: compactLabel(node),
+        fullLabel: node.title,
+        size: node.size,
+        color: node.missing ? "#d9534f" : clusterColor.get(node.cluster),
+        cluster: node.cluster,
+        raw: node
       });
+    });
+    edges.forEach(edge => {
+      try {
+        renderGraph.addDirectedEdgeWithKey(edge.key, edge.source, edge.target, {
+          size: edge.target_missing ? 1.4 : 0.8,
+          color: edge.target_missing ? "rgba(217,83,79,0.9)" : "rgba(255,255,255,0.22)",
+          relation: edge.relation || "related_to",
+          raw: edge
+        });
+      } catch (_error) {
+        renderGraph.addEdgeWithKey(edge.key, edge.source, edge.target, {
+          size: edge.target_missing ? 1.4 : 0.8,
+          color: edge.target_missing ? "rgba(217,83,79,0.9)" : "rgba(255,255,255,0.22)",
+          relation: edge.relation || "related_to",
+          raw: edge
+        });
+      }
+    });
 
-      nodes.forEach(node => {
-        const visible = matchesFilter(node);
-        const group = createSvg("g", {
-          class: `node ${node.missing ? "missing" : ""} ${node === selectedNode ? "active" : ""} ${visible ? "" : "dim"}`,
-          transform: `translate(${node.x} ${node.y})`
+    const neighborsById = new Map(nodes.map(node => [node.id, new Set()]));
+    edges.forEach(edge => {
+      neighborsById.get(edge.source)?.add(edge.target);
+      neighborsById.get(edge.target)?.add(edge.source);
+    });
+    const incomingById = new Map(nodes.map(node => [node.id, []]));
+    const outgoingById = new Map(nodes.map(node => [node.id, []]));
+    edges.forEach(edge => {
+      outgoingById.get(edge.source)?.push(edge);
+      incomingById.get(edge.target)?.push(edge);
+    });
+
+    let selectedNode = null;
+    let selectedEdge = null;
+    let hoveredNode = null;
+    let selectedCluster = null;
+    let filterText = "";
+    let focusMode = "all";
+    let visibleNeighborhood = null;
+    let searchMatches = new Set();
+
+    document.getElementById("nodeCount").textContent = sourceGraph.nodes.length;
+    document.getElementById("edgeCount").textContent = sourceGraph.edges.length;
+    document.getElementById("bundleCount").textContent = sourceGraph.bundles.length;
+
+    const bundleColor = new Map(sourceGraph.bundles.map((bundle, index) => [bundle.id, palette[index % palette.length]]));
+    const legend = document.getElementById("legend");
+    legend.innerHTML = sourceGraph.bundles.map(bundle => `
+      <div class="legend-item">
+        <span class="dot" style="background:${bundleColor.get(bundle.id)}"></span>
+        <span>${escapeHtml(bundle.title)}</span>
+        <span class="bundle-path">depth ${bundle.depth}</span>
+      </div>
+    `).join("");
+
+    function renderClusters() {
+      clusterList.innerHTML = clusters.map(([cluster, clusterNodes]) => `
+        <button class="cluster-button ${selectedCluster === cluster ? "active" : ""}" type="button" data-cluster="${escapeHtml(cluster)}">
+          <span class="dot" style="background:${clusterColor.get(cluster)}"></span>
+          <span>${escapeHtml(cluster)}</span>
+          <span class="cluster-count">${clusterNodes.length}</span>
+        </button>
+      `).join("");
+      [...clusterList.querySelectorAll(".cluster-button")].forEach(button => {
+        button.addEventListener("click", () => {
+          selectedCluster = selectedCluster === button.dataset.cluster ? null : button.dataset.cluster;
+          renderClusters();
+          refreshVisibility();
         });
-        const circle = createSvg("circle", {
-          r: node.radius,
-          fill: node.missing ? "transparent" : bundleColor.get(node.bundle_id) || "#8d99ae"
-        });
-        const labelOnLeft = node.x > 80;
-        const text = createSvg("text", {
-          x: labelOnLeft ? -(node.radius + 8) : node.radius + 8,
-          y: 4,
-          "text-anchor": labelOnLeft ? "end" : "start"
-        });
-        text.textContent = node.title;
-        group.append(circle, text);
-        group.addEventListener("pointerdown", event => {
-          event.stopPropagation();
-          draggingNode = node;
-          selectedEdge = null;
-          selectedNode = node;
-          showNode(node);
-          render();
-          svg.setPointerCapture(event.pointerId);
-        });
-        group.addEventListener("click", event => event.stopPropagation());
-        nodeLayer.appendChild(group);
       });
+    }
+
+    function collectNeighborhood(nodeId, depth) {
+      const seen = new Set([nodeId]);
+      let frontier = new Set([nodeId]);
+      for (let step = 0; step < depth; step += 1) {
+        const next = new Set();
+        frontier.forEach(id => {
+          (neighborsById.get(id) || new Set()).forEach(neighbor => {
+            if (!seen.has(neighbor)) {
+              seen.add(neighbor);
+              next.add(neighbor);
+            }
+          });
+        });
+        frontier = next;
+      }
+      return seen;
+    }
+
+    function baseVisible(nodeId) {
+      const node = nodeById.get(nodeId);
+      if (!node) return false;
+      if (selectedCluster && node.cluster !== selectedCluster) return false;
+      if (selectedNode && focusMode !== "all" && visibleNeighborhood && !visibleNeighborhood.has(nodeId)) return false;
+      return true;
+    }
+
+    function nodeMatchesSearch(node) {
+      return !filterText || node.searchText.includes(filterText);
+    }
+
+    function updateSearchState() {
+      searchMatches = new Set();
+      if (!filterText) {
+        searchHint.textContent = "";
+        return;
+      }
+      nodes.forEach(node => {
+        if (nodeMatchesSearch(node)) searchMatches.add(node.id);
+      });
+      const sample = [...searchMatches].slice(0, 3).map(id => nodeById.get(id)?.title).filter(Boolean).join(", ");
+      searchHint.textContent = searchMatches.size ? `${searchMatches.size} matches: ${sample}` : "No matches";
+    }
+
+    function updateModeButtons() {
+      allMode.classList.toggle("active", focusMode === "all");
+      oneHopMode.classList.toggle("active", focusMode === "one");
+      twoHopMode.classList.toggle("active", focusMode === "two");
+    }
+
+    function refreshVisibility() {
+      visibleNeighborhood = selectedNode && focusMode !== "all" ? collectNeighborhood(selectedNode.id, focusMode === "one" ? 1 : 2) : null;
+      renderer.refresh();
     }
 
     function showNode(node) {
-      const outgoing = edges.filter(edge => edge.source === node.id);
-      const incoming = edges.filter(edge => edge.target === node.id);
+      const outgoing = outgoingById.get(node.id) || [];
+      const incoming = incomingById.get(node.id) || [];
       details.className = "";
       details.innerHTML = `
         <h2>Concept</h2>
@@ -708,15 +915,16 @@
         <div class="tag-list">${(node.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
         <div class="meta-grid">
           <div class="meta"><span>Type</span><code>${escapeHtml(node.type || "unknown")}</code></div>
+          <div class="meta"><span>Cluster</span><code>${escapeHtml(node.cluster || "unknown")}</code></div>
           <div class="meta"><span>Owner</span><code>${escapeHtml(ownerName(node.owner))}</code></div>
           <div class="meta"><span>Connections</span><code>${escapeHtml(node.degree || 0)}</code></div>
-          <div class="meta"><span>Bundle</span><code>${escapeHtml(node.bundle_ancestry.length ? node.bundle_ancestry.join(" / ") : "root")}</code></div>
+          <div class="meta"><span>Bundle</span><code>${escapeHtml((node.bundle_ancestry || []).length ? node.bundle_ancestry.join(" / ") : "root")}</code></div>
           <div class="meta"><span>Path</span><code>${escapeHtml(node.path)}</code></div>
         </div>
         <h2>Relations</h2>
         <div class="edge-list">
           ${[...outgoing, ...incoming].map(edge => `
-            <div class="edge-card" data-edge="${escapeHtml(edge.source + "|" + edge.target + "|" + edge.relation)}">
+            <div class="edge-card" data-edge="${escapeHtml(edge.key)}">
               <strong>${escapeHtml(edge.source === node.id ? "To " + (nodeById.get(edge.target)?.title || edge.name) : "From " + (nodeById.get(edge.source)?.title || "Unknown"))}</strong>
               <span>${escapeHtml(edge.relation || "related_to")}: ${escapeHtml(edge.description || "")}</span>
             </div>
@@ -725,11 +933,10 @@
       `;
       [...details.querySelectorAll(".edge-card")].forEach(card => {
         card.addEventListener("click", () => {
-          const [source, target, relation] = card.dataset.edge.split("|");
-          selectedEdge = edges.find(edge => edge.source === source && edge.target === target && edge.relation === relation);
+          selectedEdge = edges.find(edge => edge.key === card.dataset.edge);
           selectedNode = null;
           if (selectedEdge) showEdge(selectedEdge);
-          render();
+          refreshVisibility();
         });
       });
     }
@@ -752,73 +959,374 @@
     function clearSelection() {
       selectedNode = null;
       selectedEdge = null;
-      search.value = "";
+      selectedCluster = null;
       filterText = "";
+      search.value = "";
+      focusMode = "all";
+      updateSearchState();
+      updateModeButtons();
+      renderClusters();
       details.className = "detail-empty";
       details.innerHTML = "<p>Select a concept or relation to inspect metadata and graph context.</p>";
-      render();
+      refreshVisibility();
     }
+
+    const renderer = new SigmaClass(renderGraph, graphEl, {
+      renderEdgeLabels: false,
+      labelRenderedSizeThreshold: 0,
+      labelDensity: 0.86,
+      labelGridCellSize: 44,
+      labelColor: { color: "rgba(255,255,255,0.7)" },
+      labelSize: 7,
+      labelWeight: "560",
+      labelRenderer: drawAdaptiveLabel,
+      hoverRenderer: () => {},
+      defaultEdgeColor: "rgba(255,255,255,0.2)",
+      defaultNodeColor: "#8d99ae",
+      enableEdgeClickEvents: true,
+      minCameraRatio: 0.08,
+      maxCameraRatio: 5,
+      nodeReducer(nodeId, data) {
+        const node = data.raw;
+        const visible = baseVisible(nodeId);
+        const matched = nodeMatchesSearch(node);
+        const neighborOfSelected = selectedNode && (nodeId === selectedNode.id || (neighborsById.get(selectedNode.id) || new Set()).has(nodeId));
+        const result = { ...data };
+        if (!visible) {
+          result.hidden = true;
+          return result;
+        }
+        const showLabel = shouldShowLabel(node, matched);
+        result.size = renderedNodeSize(node, data.size);
+        result.label = showLabel ? data.label : "";
+        result.forceLabel = showLabel;
+        if (filterText && !matched) {
+          result.color = "rgba(130,136,140,0.38)";
+          result.size = Math.max(1.4, result.size * 0.68);
+        }
+        if (selectedNode && focusMode === "all" && !neighborOfSelected) {
+          result.color = "rgba(130,136,140,0.42)";
+          result.size = Math.max(1.4, result.size * 0.74);
+        }
+        if (nodeId === selectedNode?.id || nodeId === hoveredNode) {
+          result.color = "#fff0a6";
+          result.size = renderedNodeSize(node, data.size) + 3.5;
+          result.label = data.fullLabel || data.label;
+        }
+        return result;
+      },
+      edgeReducer(edgeId, data) {
+        const edge = data.raw;
+        const sourceVisible = baseVisible(edge.source);
+        const targetVisible = baseVisible(edge.target);
+        const result = { ...data };
+        if (!sourceVisible || !targetVisible) {
+          result.hidden = true;
+          return result;
+        }
+        const incidentSelected = selectedNode && (edge.source === selectedNode.id || edge.target === selectedNode.id);
+        if (selectedEdge?.key === edgeId) {
+          result.color = "#fff0a6";
+          result.size = 2.4;
+        } else if (incidentSelected) {
+          result.color = "rgba(255,240,166,0.68)";
+          result.size = 1.5;
+        } else {
+          const overview = clamp(0, (currentCameraRatio - 0.8) / 1.7, 1);
+          const sameCluster = edge.sourceNode?.cluster === edge.targetNode?.cluster;
+          const alpha = (0.007 + (1 - overview) * 0.02) * (sameCluster ? 0.7 : 1);
+          result.color = `rgba(210,220,220,${alpha})`;
+          result.size = data.size * (0.12 + (1 - overview) * 0.18);
+        }
+        return result;
+      }
+    });
+    currentCameraRatio = renderer.getCamera().getState().ratio;
+    renderer.getCamera().on("updated", state => {
+      currentCameraRatio = state.ratio;
+      renderer.refresh();
+    });
+    function setCameraToVisible(animated = true) {
+      const state = { x: 0.5, y: 0, ratio: 2.4 };
+      const camera = renderer.getCamera();
+      if (animated && typeof camera.animate === "function") camera.animate(state, { duration: 460 });
+      else camera.setState(state);
+    }
+
+    function syncPositions() {
+      nodes.forEach(node => {
+        renderGraph.setNodeAttribute(node.id, "x", node.x);
+        renderGraph.setNodeAttribute(node.id, "y", node.y);
+      });
+      renderer.refresh();
+    }
+
+    const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+    async function runClusteredLayout() {
+      graphStatus.textContent = "Settling clusters for 8s...";
+      graphStatus.classList.remove("ready");
+      const layoutBudgetMs = 8500;
+      const gridSize = 760;
+      const start = performance.now();
+      let iteration = 0;
+      const clusterLinks = new Map();
+      edges.forEach(edge => {
+        const sourceCluster = edge.sourceNode?.cluster;
+        const targetCluster = edge.targetNode?.cluster;
+        if (!sourceCluster || !targetCluster || sourceCluster === targetCluster) return;
+        const key = [sourceCluster, targetCluster].sort().join("\u0000");
+        clusterLinks.set(key, (clusterLinks.get(key) || 0) + 1);
+      });
+
+      function relaxClusterCenters(progress) {
+        const centers = [...clusterCenter.entries()];
+        centers.forEach(([cluster, center], index) => {
+          for (let otherIndex = index + 1; otherIndex < centers.length; otherIndex += 1) {
+            const [otherCluster, otherCenter] = centers[otherIndex];
+            const dx = otherCenter.x - center.x;
+            const dy = otherCenter.y - center.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const desired = (clusterRadius.get(cluster) || 200) + (clusterRadius.get(otherCluster) || 200) + 360;
+            if (distance >= desired) continue;
+            const push = (desired - distance) * (0.006 + progress * 0.005);
+            const fx = (dx / distance) * push;
+            const fy = (dy / distance) * push;
+            center.x -= fx;
+            center.y -= fy;
+            otherCenter.x += fx;
+            otherCenter.y += fy;
+          }
+        });
+
+        clusterLinks.forEach((count, key) => {
+          const [sourceCluster, targetCluster] = key.split("\u0000");
+          const source = clusterCenter.get(sourceCluster);
+          const target = clusterCenter.get(targetCluster);
+          if (!source || !target) return;
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          const desired = (clusterRadius.get(sourceCluster) || 200) + (clusterRadius.get(targetCluster) || 200) + 620;
+          const strength = Math.min(0.006, 0.0012 + Math.log1p(count) * 0.00035) * (1 - progress * 0.65);
+          const force = (distance - desired) * strength;
+          const fx = (dx / distance) * force;
+          const fy = (dy / distance) * force;
+          source.x += fx;
+          source.y += fy;
+          target.x -= fx;
+          target.y -= fy;
+        });
+
+        centers.forEach(([, center]) => {
+          center.x *= 0.9995;
+          center.y *= 0.9995;
+        });
+      }
+
+      function layoutStep(progress) {
+        const cooling = 1 - progress;
+        const collisionStrength = 0.075 + progress * 0.075;
+        const centerPull = 0.006 + progress * 0.009;
+        edges.forEach(edge => {
+          const source = edge.sourceNode;
+          const target = edge.targetNode;
+          if (!source || !target) return;
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          const sameCluster = source.cluster === target.cluster;
+          const desired = sameCluster ? 180 + (source.size + target.size) * 6.1 : 820;
+          const strength = (sameCluster ? 0.0022 : 0.00065) * (0.85 + cooling * 0.55);
+          const force = (distance - desired) * strength;
+          const fx = (dx / distance) * force;
+          const fy = (dy / distance) * force;
+          source.vx += fx;
+          source.vy += fy;
+          target.vx -= fx;
+          target.vy -= fy;
+        });
+
+        nodes.forEach(node => {
+          const center = clusterCenter.get(node.cluster);
+          if (!center) return;
+          node.vx += (center.x - node.x) * centerPull;
+          node.vy += (center.y - node.y) * centerPull;
+        });
+
+        const buckets = new Map();
+        nodes.forEach(node => {
+          const key = `${Math.floor(node.x / gridSize)},${Math.floor(node.y / gridSize)}`;
+          if (!buckets.has(key)) buckets.set(key, []);
+          buckets.get(key).push(node);
+        });
+
+        nodes.forEach(node => {
+          const bx = Math.floor(node.x / gridSize);
+          const by = Math.floor(node.y / gridSize);
+          for (let ox = -1; ox <= 1; ox += 1) {
+            for (let oy = -1; oy <= 1; oy += 1) {
+              const bucket = buckets.get(`${bx + ox},${by + oy}`);
+              if (!bucket) continue;
+              bucket.forEach(other => {
+                if (other.id <= node.id) return;
+                const dx = other.x - node.x;
+                const dy = other.y - node.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                const desired = (node.size + other.size) * 6.25 + 48;
+                if (distance >= desired) return;
+                const force = (desired - distance) * collisionStrength;
+                const fx = (dx / distance) * force;
+                const fy = (dy / distance) * force;
+                node.vx -= fx;
+                node.vy -= fy;
+                other.vx += fx;
+                other.vy += fy;
+              });
+            }
+          }
+        });
+
+        nodes.forEach(node => {
+          node.vx *= 0.78 - progress * 0.05;
+          node.vy *= 0.78 - progress * 0.05;
+          node.x += node.vx;
+          node.y += node.vy;
+        });
+      }
+
+      while (performance.now() - start < layoutBudgetMs) {
+        const batchStart = performance.now();
+        while (performance.now() - batchStart < 14 && performance.now() - start < layoutBudgetMs) {
+          const progress = clamp(0, (performance.now() - start) / layoutBudgetMs, 1);
+          relaxClusterCenters(progress);
+          layoutStep(progress);
+          iteration += 1;
+        }
+        const elapsed = performance.now() - start;
+        const remaining = Math.max(0, Math.ceil((layoutBudgetMs - elapsed) / 1000));
+        graphStatus.textContent = remaining ? `Settling clusters... ${remaining}s` : "Final collision pass...";
+        syncPositions();
+        await nextFrame();
+      }
+      for (let pass = 0; pass < 520; pass += 1) {
+        const buckets = new Map();
+        nodes.forEach(node => {
+          const key = `${Math.floor(node.x / gridSize)},${Math.floor(node.y / gridSize)}`;
+          if (!buckets.has(key)) buckets.set(key, []);
+          buckets.get(key).push(node);
+        });
+
+        nodes.forEach(node => {
+          const bx = Math.floor(node.x / gridSize);
+          const by = Math.floor(node.y / gridSize);
+          for (let ox = -1; ox <= 1; ox += 1) {
+            for (let oy = -1; oy <= 1; oy += 1) {
+              const bucket = buckets.get(`${bx + ox},${by + oy}`);
+              if (!bucket) continue;
+              bucket.forEach(other => {
+                if (other.id <= node.id) return;
+                const dx = other.x - node.x;
+                const dy = other.y - node.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                const desired = (node.size + other.size) * 6.55 + 58;
+                if (distance >= desired) return;
+                const push = (desired - distance) * 0.68;
+                const fx = (dx / distance) * push;
+                const fy = (dy / distance) * push;
+                node.x -= fx;
+                node.y -= fy;
+                other.x += fx;
+                other.y += fy;
+              });
+            }
+          }
+        });
+        if (pass % 20 === 0) {
+          graphStatus.textContent = "Final collision pass...";
+          syncPositions();
+          await nextFrame();
+        }
+      }
+      syncPositions();
+      graphStatus.textContent = `${nodes.length} concepts in ${clusters.length} clusters (${iteration} layout steps)`;
+      graphStatus.classList.add("ready");
+      setCameraToVisible(false);
+    }
+
+    renderer.on("clickNode", event => {
+      selectedNode = nodeById.get(event.node);
+      selectedEdge = null;
+      if (selectedNode) showNode(selectedNode);
+      refreshVisibility();
+    });
+    renderer.on("enterNode", event => {
+      hoveredNode = event.node;
+      graphEl.style.cursor = "pointer";
+      renderer.refresh();
+    });
+    renderer.on("leaveNode", () => {
+      hoveredNode = null;
+      graphEl.style.cursor = "grab";
+      renderer.refresh();
+    });
+    renderer.on("clickEdge", event => {
+      selectedEdge = edges.find(edge => edge.key === event.edge);
+      selectedNode = null;
+      if (selectedEdge) showEdge(selectedEdge);
+      refreshVisibility();
+    });
+    renderer.on("clickStage", () => {
+      selectedNode = null;
+      selectedEdge = null;
+      details.className = "detail-empty";
+      details.innerHTML = "<p>Select a concept or relation to inspect metadata and graph context.</p>";
+      refreshVisibility();
+    });
 
     search.addEventListener("input", () => {
       filterText = search.value.trim().toLowerCase();
-      render();
+      updateSearchState();
+      refreshVisibility();
+    });
+    search.addEventListener("keydown", event => {
+      if (event.key !== "Enter" || !searchMatches.size) return;
+      const nextNode = nodeById.get([...searchMatches][0]);
+      if (!nextNode) return;
+      selectedNode = nextNode;
+      selectedEdge = null;
+      showNode(nextNode);
+      refreshVisibility();
+      setCameraToVisible(true);
     });
 
-    fitButton.addEventListener("click", fitGraph);
+    fitButton.addEventListener("click", () => setCameraToVisible(true));
     clearButton.addEventListener("click", clearSelection);
-
-    svg.addEventListener("wheel", event => {
-      event.preventDefault();
-      const rect = svg.getBoundingClientRect();
-      const mx = event.clientX - rect.left;
-      const my = event.clientY - rect.top;
-      const nextScale = Math.min(3, Math.max(0.35, transform.k * (event.deltaY > 0 ? 0.9 : 1.1)));
-      const worldX = (mx - transform.x) / transform.k;
-      const worldY = (my - transform.y) / transform.k;
-      transform.x = mx - worldX * nextScale;
-      transform.y = my - worldY * nextScale;
-      transform.k = nextScale;
-      applyTransform();
-    }, { passive: false });
-
-    svg.addEventListener("pointerdown", event => {
-      if (event.target.closest(".node")) return;
-      panning = { x: event.clientX, y: event.clientY, tx: transform.x, ty: transform.y };
-      svg.classList.add("panning");
-      svg.setPointerCapture(event.pointerId);
+    allMode.addEventListener("click", () => {
+      focusMode = "all";
+      updateModeButtons();
+      refreshVisibility();
+      setCameraToVisible(true);
+    });
+    oneHopMode.addEventListener("click", () => {
+      focusMode = "one";
+      updateModeButtons();
+      refreshVisibility();
+      setCameraToVisible(true);
+    });
+    twoHopMode.addEventListener("click", () => {
+      focusMode = "two";
+      updateModeButtons();
+      refreshVisibility();
+      setCameraToVisible(true);
     });
 
-    svg.addEventListener("pointermove", event => {
-      if (draggingNode) {
-        const rect = svg.getBoundingClientRect();
-        draggingNode.x = (event.clientX - rect.left - transform.x) / transform.k;
-        draggingNode.y = (event.clientY - rect.top - transform.y) / transform.k;
-        draggingNode.vx = 0;
-        draggingNode.vy = 0;
-        render();
-      } else if (panning) {
-        transform.x = panning.tx + event.clientX - panning.x;
-        transform.y = panning.ty + event.clientY - panning.y;
-        applyTransform();
-      }
-    });
-
-    svg.addEventListener("pointerup", () => {
-      draggingNode = null;
-      panning = null;
-      svg.classList.remove("panning");
-    });
-
-    svg.addEventListener("click", () => {
-      if (!draggingNode && !panning) clearSelection();
-    });
-
-    window.addEventListener("resize", resize);
-    resize();
-    tick();
-    setTimeout(fitGraph, 900);
-    setTimeout(fitGraph, 1800);
-    if (nodes.length) showNode(nodes[0]);
+    renderClusters();
+    updateSearchState();
+    updateModeButtons();
+    refreshVisibility();
+    setCameraToVisible(false);
+    runClusteredLayout();
   </script>
 </body>
 </html>
