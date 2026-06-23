@@ -1,17 +1,5 @@
 # Enterprise Knowledge Format
 
-Enterprise Knowledge Format (EKF) is a plain-text standard for organizing enterprise knowledge so humans and AI agents can discover it, trust it, and keep it current.
-
-EKF treats the knowledge base as a repository, not a product silo. Canonical knowledge lives in markdown. YAML frontmatter carries ownership, lifecycle status, provenance, tags, and typed graph relationships. Raw source material and generated artifacts stay close to the knowledge they support, but they do not replace it.
-
-The goal is simple: make enterprise knowledge scalable without making basic discovery depend on a search appliance, graph database, vector database, or vendor-specific catalog.
-
-If that direction is useful to you, star this repository so the standard is easier for other agent and knowledge-system builders to find.
-
-![NIST EKF knowledge graph demo](assets/nist-ekf-knowledge-graph.png)
-
-The screenshot above is from the companion [NIST EKF demo](https://github.com/Enterprise-knowledge/nist-ekf), which turns public NIST governance material into an EKF bundle with 1,478 concepts, 3,806 typed relationships, nested bundles, source provenance, generated graph data, and a browser-readable graph artifact.
-
 ## Why EKF Exists
 
 Enterprise knowledge bases often fail in two opposite ways:
@@ -106,11 +94,13 @@ tags:
 
 The [NIST EKF demo](https://github.com/Enterprise-knowledge/nist-ekf) shows EKF applied to public governance material:
 
+![NIST EKF knowledge graph demo](assets/nist-ekf-knowledge-graph.png)
+
 - NIST Cybersecurity Framework 2.0
 - NIST AI Risk Management Framework 1.0
 - NIST SP 800-53 Rev. 5
 
-It demonstrates nested bundles, generated markdown artifacts, source provenance, typed relationships, graph parsing, and a static HTML graph view.
+It demonstrates 1,478 concepts, 3,806 typed relationships, nested bundles, generated markdown artifacts, source provenance, graph parsing, and a static HTML graph view.
 
 ## Validation
 
