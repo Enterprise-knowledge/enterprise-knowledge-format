@@ -1,1 +1,6 @@
+.DS_Store
 .playwright-cli/
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]

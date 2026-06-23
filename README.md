@@ -1,43 +1,41 @@
 # Enterprise Knowledge Format
 
-Enterprise Knowledge Format (EKF) is a plain-text standard for organizing company knowledge so humans and agents can discover it, trust it, and keep it current.
+Enterprise Knowledge Format (EKF) is a plain-text standard for organizing enterprise knowledge so humans and AI agents can discover it, trust it, and keep it current.
 
-EKF treats the enterprise knowledge base as a repository, not a product silo. Canonical knowledge lives in markdown. YAML frontmatter carries ownership, status, provenance, tags, and typed graph relationships. Raw source material and generated artifacts stay close to the knowledge they support, but they do not replace it.
+EKF treats the knowledge base as a repository, not a product silo. Canonical knowledge lives in markdown. YAML frontmatter carries ownership, lifecycle status, provenance, tags, and typed graph relationships. Raw source material and generated artifacts stay close to the knowledge they support, but they do not replace it.
 
 The goal is simple: make enterprise knowledge scalable without making basic discovery depend on a search appliance, graph database, vector database, or vendor-specific catalog.
 
-## Core Idea
+If that direction is useful to you, star this repository so the standard is easier for other agent and knowledge-system builders to find.
 
-EKF separates the knowledge system into three layers:
+![NIST EKF knowledge graph demo](assets/nist-ekf-knowledge-graph.png)
 
-- `knowledge/` - Curated markdown concepts with governance metadata and typed relationships.
-- `source/` - Raw, mirrored, extracted, or synchronized material that supports those concepts.
-- `artifacts/` - Generated HTML, diagrams, graph exports, indexes, and other renderings.
+The screenshot above is from the companion [NIST EKF demo](https://github.com/Enterprise-knowledge/nist-ekf), which turns public NIST governance material into an EKF bundle with 1,478 concepts, 3,806 typed relationships, nested bundles, source provenance, generated graph data, and a browser-readable graph artifact.
 
-Every index, concept, source, artifact, and relation should include a short description. That progressive discovery layer lets an LLM or a human decide what to open next without loading the whole repository.
+## Why EKF Exists
 
-## Relation To OKF And LLM Wikis
+Enterprise knowledge bases often fail in two opposite ways:
 
-EKF builds on the ideas behind Open Knowledge Format (OKF): markdown documents, YAML frontmatter, directory indexes, and permissive traversal. It keeps that durable base and adds enterprise conventions for ownership, lifecycle, provenance, nested bundles, source separation, generated artifacts, and typed graph edges.
+- They are too loose to trust: documents, wikis, PDFs, repos, exports, and diagrams drift apart.
+- They are too rigid to maintain: catalogs, graph databases, and search systems become required before basic discovery works.
 
-It also follows the spirit of LLM wiki repositories: a knowledge base should be legible to agents using ordinary file reads, links, `rg`, and stable metadata. EKF makes that wiki pattern governable enough for large organizations, where many teams own different systems, APIs, repositories, policies, and data models.
+EKF takes a middle path:
 
-## Why EKF
+- **Progressive discovery first** - Every index, concept, source, artifact, and relation should have a short description that helps a human or agent decide whether to go deeper.
+- **Markdown is canonical** - Curated concepts live in markdown with YAML frontmatter, so the base remains portable, reviewable, and grep-friendly.
+- **Graph in frontmatter** - Typed relationships live in `related`, so graph traversal does not require prose parsing.
+- **Source and artifacts stay separate** - Raw material belongs in `source/`; generated views belong in `artifacts/`; curated knowledge belongs in `knowledge/`.
+- **Nested bundles model ownership** - Independently owned domains, systems, platforms, and governance areas can live under `bundles/`.
+- **Governance without lock-in** - EKF requires ownership, status, timestamps, provenance, and lifecycle metadata without requiring a specific cloud, database, catalog, model, or serving layer.
 
-- Progressive discovery first, so agents can navigate before they ingest.
-- Markdown as the canonical knowledge layer, so the base remains portable and reviewable.
-- Typed graph relationships in frontmatter, so graph traversal does not require prose parsing.
-- Clear separation between curated knowledge, raw source, and generated artifacts.
-- Nested bundles for team, platform, system, and domain ownership boundaries.
-- Enterprise governance without locking the format to a specific cloud, catalog, model, or database.
+## Repository Map
 
-## Get Started
+- [SPEC.md](SPEC.md) - The EKF v0.1 draft specification.
+- [skills/ekf-bootstrap](skills/ekf-bootstrap/SKILL.md) - Installable bootstrap skill for creating, validating, parsing, and visualizing EKF bundles.
+- [examples/nist-ekf](examples/nist-ekf/) - Lightweight pointer to the companion NIST EKF demo repository.
+- [AGENTS.md](AGENTS.md) - Maintenance guidance for future agents working on this standard.
 
-Read the standard:
-
-- [SPEC.md](SPEC.md) - The EKF specification.
-- [AGENTS.md](AGENTS.md) - Maintenance guidance for future agents.
-- [skills/ekf-bootstrap](skills/ekf-bootstrap/SKILL.md) - Installable bootstrap skill for creating and growing EKF repositories.
+## Quick Start
 
 Install the bootstrap skill with `npx skills`:
 
@@ -59,22 +57,89 @@ Install the `ekf-bootstrap` skill from `Enterprise-knowledge/enterprise-knowledg
 
 The installed skill includes its own copy of the EKF specification in `references/SPEC.md`, so it can scaffold and expand EKF repositories without depending on this repository being checked out locally.
 
-## Bootstrap Prompts
+## Try It
 
-After installing the skill, try one of these prompts:
+Create a starter EKF bundle:
 
 ```text
 Use $ekf-bootstrap to create a new EKF repository in `./enterprise-knowledge` titled "Acme Enterprise Knowledge Base", owned by "Enterprise Architecture". Create nested bundles for `customer-platform`, `billing-platform`, and `data-platform`.
 ```
 
+Grow it from source material:
+
 ```text
 Use $ekf-bootstrap to inspect the source material I added under `source/` and `bundles/*/source/`. Add or update `ekf-source.yml` manifests, then draft initial EKF concepts under `knowledge/` with descriptions, provenance in `sources`, and typed relationships in `related`.
 ```
 
+Generate a graph view:
+
 ```text
-Use $ekf-bootstrap to grow the `customer-platform` nested bundle from the source I added. Keep raw files in `source/`, generated diagrams or HTML in `artifacts/`, and canonical explanations in `knowledge/`.
+Use $ekf-bootstrap to validate this EKF bundle, parse its `related` frontmatter into graph JSON, and create a browser-readable graph artifact under `artifacts/html/knowledge-graph/`.
 ```
+
+## What an EKF Concept Looks Like
+
+```yaml
+---
+type: service
+title: Customer Identity Service
+description: Service that resolves customer identity for account, billing, and support workflows.
+status: active
+owner:
+  name: Customer Platform Team
+updated: 2026-06-23T00:00:00Z
+sources:
+  - path: /source/repositories/customer-platform/openapi.yml
+    description: API contract used as source evidence for service behavior.
+related:
+  - name: Billing Account Model
+    path: /bundles/billing-platform/knowledge/data/billing-account.md
+    relation: supports
+    description: Customer identity links billing accounts to customer records.
+tags:
+  - customer-platform
+  - identity
+---
+```
+
+## Companion Demo
+
+The [NIST EKF demo](https://github.com/Enterprise-knowledge/nist-ekf) shows EKF applied to public governance material:
+
+- NIST Cybersecurity Framework 2.0
+- NIST AI Risk Management Framework 1.0
+- NIST SP 800-53 Rev. 5
+
+It demonstrates nested bundles, generated markdown artifacts, source provenance, typed relationships, graph parsing, and a static HTML graph view.
+
+## Validation
+
+The bootstrap skill includes helper scripts for local validation and graph generation:
+
+```sh
+uv run --with pyyaml python skills/ekf-bootstrap/scripts/validate_ekf.py <bundle>
+uv run --with pyyaml python skills/ekf-bootstrap/scripts/parse_ekf_graph.py <bundle> \
+  --output <bundle>/artifacts/graph/graph.json
+```
+
+This repository also includes a CI workflow that smoke-tests the bootstrap, validation, and graph parser path.
 
 ## Status
 
-Draft v0.1.
+EKF is currently **v0.1 draft**. The standard is ready for early feedback, trial implementations, and example bundles, but the schema and conformance language may still change before a stable v1.0.
+
+## Contributing
+
+Contributions are welcome, especially:
+
+- feedback on the specification and conformance rules,
+- small example bundles,
+- validator improvements,
+- graph parsing and artifact improvements,
+- writeups from real-world trials.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening issues or pull requests.
+
+## License
+
+EKF is licensed under the [Apache License 2.0](LICENSE). Apache 2.0 is a good fit for this repository because it covers both the written standard and the bootstrap tooling, supports broad commercial and internal enterprise use, and includes an explicit patent grant.

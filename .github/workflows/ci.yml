@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    name: Validate EKF Tooling
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Compile Python helpers
+        run: |
+          uv run python -m py_compile \
+            skills/ekf-bootstrap/scripts/bootstrap_ekf.py \
+            skills/ekf-bootstrap/scripts/validate_ekf.py \
+            skills/ekf-bootstrap/scripts/parse_ekf_graph.py
+
+      - name: Smoke-test bootstrap, validation, and graph parsing
+        run: |
+          rm -rf /tmp/ekf-smoke
+          uv run python skills/ekf-bootstrap/scripts/bootstrap_ekf.py \
+            /tmp/ekf-smoke \
+            --title "EKF Smoke Test" \
+            --owner "Enterprise Architecture" \
+            --nested-bundle customer-platform
+
+          uv run --with pyyaml python \
+            skills/ekf-bootstrap/scripts/validate_ekf.py /tmp/ekf-smoke
+
+          uv run --with pyyaml python \
+            skills/ekf-bootstrap/scripts/parse_ekf_graph.py /tmp/ekf-smoke \
+            --output /tmp/ekf-smoke/artifacts/graph/graph.json
+
+          test -s /tmp/ekf-smoke/artifacts/graph/graph.json
+
+      - name: Check for unresolved placeholders
+        run: |
+          ! rg -n "[T]ODO|[T]BD|[F]IXME" SPEC.md AGENTS.md README.md CONTRIBUTING.md skills/ekf-bootstrap
+
+      - name: Check vendor-neutral language
+        run: |
+          ! rg -n "[B]igQuery|[G]oogle Cloud|[G]CP|[A]WS|[A]zure|[S]nowflake|[D]atabricks" SPEC.md AGENTS.md README.md CONTRIBUTING.md skills/ekf-bootstrap
